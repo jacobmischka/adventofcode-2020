@@ -146,12 +146,89 @@ fn main() {
         }
     }
 
-    dbg!(&image);
-
-    let image: Vec<Vec<&Tile>> = image
+    let mut image: Vec<Vec<Tile>> = image
         .iter()
-        .map(|row| row.iter().map(|id| tiles.get(&id).unwrap()).collect())
+        .map(|row| {
+            row.iter()
+                .map(|id| tiles.get(&id).unwrap())
+                .cloned()
+                .collect()
+        })
         .collect();
+
+    for c in [0, 2].iter().copied() {
+        'outer: for i in 0..8 {
+            for j in 0..8 {
+                for k in 0..8 {
+                    if image[c][c].aligned_side(&image[c][1]).is_some()
+                        && image[c][c].aligned_side(&image[1][c]).is_some()
+                    {
+                        break 'outer;
+                    }
+
+                    if k == 4 {
+                        image[1][c] = image[1][c].flip_horizontally();
+                    } else {
+                        image[1][c] = image[1][c].rotate_right();
+                    }
+                }
+                if j == 4 {
+                    image[c][1] = image[c][1].flip_horizontally();
+                } else {
+                    image[c][1] = image[c][1].rotate_right();
+                }
+            }
+            if i == 4 {
+                image[c][c] = image[c][c].flip_horizontally();
+            } else {
+                image[c][c] = image[c][c].rotate_right();
+            }
+        }
+    }
+
+    for i in 0..8 {
+        if image[2][0].aligned_side(&image[1][0]).is_some()
+            && image[2][0].aligned_side(&image[2][1]).is_some()
+        {
+            break;
+        }
+
+        if i == 4 {
+            image[2][0] = image[2][0].rotate_right();
+        } else {
+            image[2][0] = image[2][0].flip_horizontally();
+        }
+    }
+
+    for i in 0..8 {
+        if image[0][2].aligned_side(&image[1][2]).is_some()
+            && image[0][2].aligned_side(&image[0][1]).is_some()
+        {
+            break;
+        }
+
+        if i == 4 {
+            image[0][2] = image[0][2].rotate_right();
+        } else {
+            image[0][2] = image[0][2].flip_horizontally();
+        }
+    }
+
+    for i in 0..8 {
+        if image[1][1].aligned_side(&image[0][1]).is_some()
+            && image[1][1].aligned_side(&image[1][0]).is_some()
+            && image[1][1].aligned_side(&image[1][2]).is_some()
+            && image[1][1].aligned_side(&image[2][1]).is_some()
+        {
+            break;
+        }
+
+        if i == 4 {
+            image[1][1] = image[1][1].rotate_right();
+        } else {
+            image[1][1] = image[1][1].flip_horizontally();
+        }
+    }
 
     dbg!(&image);
 }
