@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     io::{self, BufRead},
     str::FromStr,
@@ -39,12 +39,14 @@ fn main() {
         }
     }
 
-    let mut align_map: BTreeMap<u16, Vec<u16>> = BTreeMap::new();
+    let mut align_map: BTreeMap<u16, BTreeMap<u16, Edge>> = BTreeMap::new();
     for (id, tile) in tiles.iter() {
         let entry = align_map.entry(*id).or_default();
         for (other_id, other_tile) in tiles.iter() {
-            if tile != other_tile && tile.aligns_with(other_tile) {
-                entry.push(*other_id);
+            if tile != other_tile {
+                if let Some(edge) = tile.aligns_with(other_tile) {
+                    entry.insert(*other_id, edge);
+                }
             }
         }
     }
@@ -75,49 +77,81 @@ fn main() {
         corners.iter().fold(1u128, |acc, id| acc * *id as u128)
     );
 
+    let mut tiles_remaining: BTreeSet<u16> = tiles.keys().copied().collect();
+
     let mut image = [[0; 3]; 3];
 
     image[0][0] = corners[0];
-    image[0][1] = align_map.get(&image[0][0]).unwrap()[0];
-    image[0][2] = align_map
-        .get(&image[0][1])
-        .unwrap()
-        .iter()
-        .copied()
-        .find(|&id| id != image[0][0] && id != center)
-        .unwrap();
-
-    image[1][0] = align_map.get(&image[0][0]).unwrap()[1];
+    tiles_remaining.remove(&corners[0]);
     image[1][1] = center;
-    image[1][2] = align_map
-        .get(&image[0][2])
-        .unwrap()
-        .iter()
-        .copied()
-        .find(|&id| id != image[0][2])
-        .unwrap();
+    tiles_remaining.remove(&center);
 
-    image[2][0] = align_map
-        .get(&image[1][2])
-        .unwrap()
+    for x in 0..3 {
+        for y in 0..3 {
+            if image[x][y] != 0 {
+                continue;
+            }
+
+            let mut possible_tiles: Option<BTreeSet<u16>> = None;
+
+            if x > 0 {
+                possible_tiles = Some(
+                    align_map
+                        .get(&image[x - 1][y])
+                        .unwrap()
+                        .keys()
+                        .copied()
+                        .collect(),
+                );
+            }
+
+            if y > 0 {
+                match possible_tiles {
+                    Some(tiles) => {
+                        possible_tiles = Some(
+                            tiles
+                                .intersection(
+                                    &align_map
+                                        .get(&image[x][y - 1])
+                                        .unwrap()
+                                        .keys()
+                                        .copied()
+                                        .collect(),
+                                )
+                                .copied()
+                                .collect(),
+                        )
+                    }
+                    None => {
+                        possible_tiles = Some(
+                            align_map
+                                .get(&image[x][y - 1])
+                                .unwrap()
+                                .keys()
+                                .copied()
+                                .collect(),
+                        );
+                    }
+                }
+            }
+
+            let tile_id = possible_tiles
+                .unwrap()
+                .intersection(&tiles_remaining)
+                .copied()
+                .next()
+                .unwrap();
+            tiles_remaining.remove(&tile_id);
+            image[x][y] = tile_id;
+        }
+    }
+
+    dbg!(&image);
+
+    let image: Vec<Vec<&Tile>> = image
         .iter()
-        .copied()
-        .find(|&id| id != image[0][0] && id != image[1][1])
-        .unwrap();
-    image[2][1] = align_map
-        .get(&image[2][0])
-        .unwrap()
-        .iter()
-        .copied()
-        .find(|&id| id != image[1][2])
-        .unwrap();
-    image[2][2] = align_map
-        .get(&image[2][1])
-        .unwrap()
-        .iter()
-        .copied()
-        .find(|id| align_map.get(&image[1][2]).unwrap().contains(id))
-        .unwrap();
+        .map(|row| row.iter().map(|id| tiles.get(&id).unwrap()).collect())
+        .collect();
 
     dbg!(&image);
 }
@@ -244,16 +278,16 @@ impl Tile {
         e1 == e2 || *e1 == Tile::flip_row(e2)
     }
 
-    fn aligns_with(&self, other: &Tile) -> bool {
+    fn aligns_with(&self, other: &Tile) -> Option<Edge> {
         for this_edge in &self.edges() {
             for that_edge in &other.edges() {
                 if Tile::edges_match(this_edge, that_edge) {
-                    return true;
+                    return Some(*this_edge);
                 }
             }
         }
 
-        false
+        None
     }
 
     fn get_edge(&self, side: &Side) -> Edge {
