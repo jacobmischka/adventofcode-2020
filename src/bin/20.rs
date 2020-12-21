@@ -39,12 +39,92 @@ fn main() {
         }
     }
 
-    dbg!(&tiles);
+    let mut align_map: BTreeMap<u16, Vec<u16>> = BTreeMap::new();
+    for (id, tile) in tiles.iter() {
+        let entry = align_map.entry(*id).or_default();
+        for (other_id, other_tile) in tiles.iter() {
+            if tile != other_tile && tile.aligns_with(other_tile) {
+                entry.push(*other_id);
+            }
+        }
+    }
+
+    let corners: Vec<u16> = align_map
+        .iter()
+        .filter_map(|(id, touching_tiles)| {
+            if touching_tiles.len() == 2 {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let center = align_map
+        .iter()
+        .find_map(|(id, touching_tiles)| {
+            if touching_tiles.len() == 4 {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    println!(
+        "Part 1: {}",
+        corners.iter().fold(1u128, |acc, id| acc * *id as u128)
+    );
+
+    let mut image = [[0; 3]; 3];
+
+    image[0][0] = corners[0];
+    image[0][1] = align_map.get(&image[0][0]).unwrap()[0];
+    image[0][2] = align_map
+        .get(&image[0][1])
+        .unwrap()
+        .iter()
+        .copied()
+        .find(|&id| id != image[0][0] && id != center)
+        .unwrap();
+
+    image[1][0] = align_map.get(&image[0][0]).unwrap()[1];
+    image[1][1] = center;
+    image[1][2] = align_map
+        .get(&image[0][2])
+        .unwrap()
+        .iter()
+        .copied()
+        .find(|&id| id != image[0][2])
+        .unwrap();
+
+    image[2][0] = align_map
+        .get(&image[1][2])
+        .unwrap()
+        .iter()
+        .copied()
+        .find(|&id| id != image[0][0] && id != image[1][1])
+        .unwrap();
+    image[2][1] = align_map
+        .get(&image[2][0])
+        .unwrap()
+        .iter()
+        .copied()
+        .find(|&id| id != image[1][2])
+        .unwrap();
+    image[2][2] = align_map
+        .get(&image[2][1])
+        .unwrap()
+        .iter()
+        .copied()
+        .find(|id| align_map.get(&image[1][2]).unwrap().contains(id))
+        .unwrap();
+
+    dbg!(&image);
 }
 
 const TILE_WIDTH: usize = 10;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Tile {
     pixels: [[bool; TILE_WIDTH]; TILE_WIDTH],
 }
@@ -129,6 +209,16 @@ impl Tile {
         new
     }
 
+    fn flip_row(row: &Edge) -> Edge {
+        let mut new = [false; TILE_WIDTH];
+
+        for i in 0..TILE_WIDTH {
+            new[TILE_WIDTH - 1 - i] = row[i];
+        }
+
+        new
+    }
+
     fn flip_horizontally(&self) -> Tile {
         let mut new = Tile::new();
 
@@ -140,6 +230,64 @@ impl Tile {
 
         new
     }
+
+    fn edges(&self) -> [Edge; 4] {
+        [
+            self.get_edge(&Side::Top),
+            self.get_edge(&Side::Bottom),
+            self.get_edge(&Side::Left),
+            self.get_edge(&Side::Right),
+        ]
+    }
+
+    fn edges_match(e1: &Edge, e2: &Edge) -> bool {
+        e1 == e2 || *e1 == Tile::flip_row(e2)
+    }
+
+    fn aligns_with(&self, other: &Tile) -> bool {
+        for this_edge in &self.edges() {
+            for that_edge in &other.edges() {
+                if Tile::edges_match(this_edge, that_edge) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn get_edge(&self, side: &Side) -> Edge {
+        match side {
+            Side::Top => self.get_row(0),
+            Side::Bottom => self.get_row(TILE_WIDTH - 1),
+            Side::Left => self.get_col(0).clone(),
+            Side::Right => self.get_col(TILE_WIDTH - 1).clone(),
+        }
+    }
+
+    fn aligned_side(&self, other: &Tile) -> Option<Side> {
+        if self.get_edge(&Side::Top) == other.get_edge(&Side::Bottom) {
+            Some(Side::Top)
+        } else if self.get_edge(&Side::Bottom) == other.get_edge(&Side::Top) {
+            Some(Side::Bottom)
+        } else if self.get_edge(&Side::Right) == other.get_edge(&Side::Left) {
+            Some(Side::Right)
+        } else if self.get_edge(&Side::Left) == other.get_edge(&Side::Right) {
+            Some(Side::Left)
+        } else {
+            None
+        }
+    }
+}
+
+type Edge = [bool; TILE_WIDTH];
+
+#[derive(Debug, Clone, Copy)]
+enum Side {
+    Top,
+    Bottom,
+    Left,
+    Right,
 }
 
 #[cfg(test)]
