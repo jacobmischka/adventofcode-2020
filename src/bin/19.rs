@@ -57,6 +57,9 @@ fn main() {
 struct Rules(BTreeMap<u16, Rule>);
 
 impl Rules {
+    fn is_recursive(&self, rule_id: u16) -> bool {
+        self.0.get(&rule_id).unwrap().is_recursive(rule_id)
+    }
     fn matches(&self, message: &str) -> Result<bool, String> {
         let chars: Vec<char> = message.chars().collect();
 
@@ -73,6 +76,7 @@ impl Rules {
         if chars.is_empty() {
             return Ok((false, chars));
         }
+
         let rule = self
             .0
             .get(&rule_id)
@@ -87,54 +91,76 @@ impl Rules {
                 }
             }
             Rule::Indirect(subrules) => {
-                'subrule_loop: for subrule in subrules {
-                    let mut remaining = chars;
+                let subrule_matches: Vec<&[char]> = subrules
+                    .iter()
+                    .filter_map(|subrule| {
+                        let mut remaining = chars;
 
-                    let mut i = 0;
-                    'subrule_id_loop: while i < subrule.len() {
-                        let subrule_id = subrule[i];
-                        if subrule_id == rule_id {
-                            if let Some(next_rule) = subrule.get(i + 1) {
-                                for j in (1..remaining.len()).rev() {
-                                    if let Ok((matches, rest)) =
-                                        self.rule_matches(*next_rule, &remaining[j..])
-                                    {
-                                        if matches {
-                                            if let Ok((recursive_matches, recursive_remaining)) =
-                                                self.rule_matches(subrule_id, &remaining[..j])
-                                            {
-                                                if recursive_matches
-                                                    && recursive_remaining.is_empty()
+                        let mut i = 0;
+                        'subrule_id_loop: while i < subrule.len() {
+                            let subrule_id = subrule[i];
+                            if self.is_recursive(subrule_id) {
+                                if let Some(next_rule) = subrule.get(i + 1) {
+                                    for j in 1..remaining.len() {
+                                        if let Ok((matches, rest)) =
+                                            self.rule_matches(*next_rule, &remaining[j..])
+                                        {
+                                            if matches {
+                                                if let Ok((
+                                                    recursive_matches,
+                                                    recursive_remaining,
+                                                )) =
+                                                    self.rule_matches(subrule_id, &remaining[..j])
                                                 {
-                                                    remaining = rest;
-                                                    i += 2;
-                                                    continue 'subrule_id_loop;
+                                                    if recursive_matches
+                                                        && recursive_remaining.is_empty()
+                                                    {
+                                                        remaining = rest;
+                                                        i += 2;
+                                                        continue 'subrule_id_loop;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-
-                                dbg!(&remaining);
-                                println!();
-
-                                continue 'subrule_loop;
                             }
+
+                            if let Ok((matches, rest)) = self.rule_matches(subrule_id, &remaining) {
+                                if !matches {
+                                    return None;
+                                }
+                                remaining = rest;
+                            }
+
+                            i += 1;
                         }
 
-                        let (matches, rest) = self.rule_matches(subrule_id, &remaining)?;
-                        if !matches {
-                            continue 'subrule_loop;
-                        }
-                        remaining = rest;
+                        Some(remaining)
+                    })
+                    .collect();
 
-                        i += 1;
-                    }
-
-                    return Ok((true, remaining));
+                if subrule_matches.is_empty() {
+                    Ok((false, chars))
+                } else {
+                    Ok((
+                        true,
+                        subrule_matches
+                            .into_iter()
+                            .fold(None, |acc: Option<&[char]>, remaining: &[char]| {
+                                if let Some(shortest) = acc {
+                                    if remaining.len() < shortest.len() {
+                                        Some(remaining)
+                                    } else {
+                                        Some(shortest)
+                                    }
+                                } else {
+                                    Some(remaining)
+                                }
+                            })
+                            .unwrap(),
+                    ))
                 }
-
-                Ok((false, chars))
             }
         }
     }
@@ -144,6 +170,15 @@ impl Rules {
 enum Rule {
     Direct(char),
     Indirect(Vec<Vec<u16>>),
+}
+
+impl Rule {
+    fn is_recursive(&self, rule_id: u16) -> bool {
+        match self {
+            Rule::Direct(_) => false,
+            Rule::Indirect(subrules) => subrules.iter().any(|subrule| subrule.contains(&rule_id)),
+        }
+    }
 }
 
 impl FromStr for Rule {
