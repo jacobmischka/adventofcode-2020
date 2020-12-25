@@ -51,7 +51,7 @@ fn main() {
         }
     }
 
-    let corners: Vec<u16> = align_map
+    let corners: BTreeSet<u16> = align_map
         .iter()
         .filter_map(|(id, touching_tiles)| {
             if touching_tiles.len() == 2 {
@@ -61,16 +61,28 @@ fn main() {
             }
         })
         .collect();
-    let center = align_map
+
+    let edges: BTreeSet<u16> = align_map
         .iter()
-        .find_map(|(id, touching_tiles)| {
+        .filter_map(|(id, touching_tiles)| {
+            if touching_tiles.len() == 3 {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let centers: BTreeSet<u16> = align_map
+        .iter()
+        .filter_map(|(id, touching_tiles)| {
             if touching_tiles.len() == 4 {
                 Some(*id)
             } else {
                 None
             }
         })
-        .unwrap();
+        .collect();
 
     println!(
         "Part 1: {}",
@@ -79,68 +91,63 @@ fn main() {
 
     let mut tiles_remaining: BTreeSet<u16> = tiles.keys().copied().collect();
 
-    let mut image = [[0; 3]; 3];
+    let width = (tiles.len() as f64).sqrt() as usize;
+    let mut image: Vec<Vec<u16>> = vec![vec![0; width]; width];
 
-    image[0][0] = corners[0];
-    tiles_remaining.remove(&corners[0]);
-    image[1][1] = center;
-    tiles_remaining.remove(&center);
+    image[0][0] = *corners.iter().next().unwrap();
+    tiles_remaining.remove(&image[0][0]);
 
-    for x in 0..3 {
-        for y in 0..3 {
+    for x in 0..width {
+        for y in 0..width {
             if image[x][y] != 0 {
                 continue;
             }
 
-            let mut possible_tiles: Option<BTreeSet<u16>> = None;
+            let mut possible_tiles: BTreeSet<u16> = tiles_remaining
+                .intersection(
+                    if (x == 0 && y == width - 1)
+                        || (x == width - 1 && y == 0)
+                        || (x == width - 1 && y == width - 1)
+                    {
+                        &corners
+                    } else if x == 0 || x == width - 1 || y == 0 || y == width - 1 {
+                        &edges
+                    } else {
+                        &centers
+                    },
+                )
+                .copied()
+                .collect();
 
             if x > 0 {
-                possible_tiles = Some(
-                    align_map
-                        .get(&image[x - 1][y])
-                        .unwrap()
-                        .keys()
-                        .copied()
-                        .collect(),
-                );
+                possible_tiles = possible_tiles
+                    .intersection(
+                        &align_map
+                            .get(&image[x - 1][y])
+                            .unwrap()
+                            .keys()
+                            .copied()
+                            .collect(),
+                    )
+                    .copied()
+                    .collect();
             }
 
             if y > 0 {
-                match possible_tiles {
-                    Some(tiles) => {
-                        possible_tiles = Some(
-                            tiles
-                                .intersection(
-                                    &align_map
-                                        .get(&image[x][y - 1])
-                                        .unwrap()
-                                        .keys()
-                                        .copied()
-                                        .collect(),
-                                )
-                                .copied()
-                                .collect(),
-                        )
-                    }
-                    None => {
-                        possible_tiles = Some(
-                            align_map
-                                .get(&image[x][y - 1])
-                                .unwrap()
-                                .keys()
-                                .copied()
-                                .collect(),
-                        );
-                    }
-                }
+                possible_tiles = possible_tiles
+                    .intersection(
+                        &align_map
+                            .get(&image[x][y - 1])
+                            .unwrap()
+                            .keys()
+                            .copied()
+                            .collect(),
+                    )
+                    .copied()
+                    .collect();
             }
 
-            let tile_id = possible_tiles
-                .unwrap()
-                .intersection(&tiles_remaining)
-                .copied()
-                .next()
-                .unwrap();
+            let tile_id = possible_tiles.iter().next().copied().unwrap();
             tiles_remaining.remove(&tile_id);
             image[x][y] = tile_id;
         }
@@ -156,84 +163,121 @@ fn main() {
         })
         .collect();
 
-    for c in [0, 2].iter().copied() {
-        'outer: for i in 0..8 {
+    'outer1: loop {
+        for i in 0..8 {
             for j in 0..8 {
                 for k in 0..8 {
-                    if image[c][c].aligned_side(&image[c][1]).is_some()
-                        && image[c][c].aligned_side(&image[1][c]).is_some()
+                    if (Some(Side::Bottom), Some(Side::Right))
+                        == (
+                            image[0][0].aligned_side(&image[0][1]),
+                            image[0][0].aligned_side(&image[1][0]),
+                        )
                     {
-                        break 'outer;
+                        break 'outer1;
                     }
 
-                    if k == 4 {
-                        image[1][c] = image[1][c].flip_horizontally();
+                    if k == 3 {
+                        image[1][0] = image[1][0].flip_horizontally();
                     } else {
-                        image[1][c] = image[1][c].rotate_right();
+                        image[1][0] = image[1][0].rotate_right();
                     }
                 }
-                if j == 4 {
-                    image[c][1] = image[c][1].flip_horizontally();
+                if j == 3 {
+                    image[0][1] = image[0][1].flip_horizontally();
                 } else {
-                    image[c][1] = image[c][1].rotate_right();
+                    image[0][1] = image[0][1].rotate_right();
                 }
             }
-            if i == 4 {
-                image[c][c] = image[c][c].flip_horizontally();
+            if i == 3 {
+                image[0][0] = image[0][0].flip_horizontally();
             } else {
-                image[c][c] = image[c][c].rotate_right();
+                image[0][0] = image[0][0].rotate_right();
             }
         }
     }
 
-    for i in 0..8 {
-        if image[2][0].aligned_side(&image[1][0]).is_some()
-            && image[2][0].aligned_side(&image[2][1]).is_some()
-        {
-            break;
-        }
+    for x in 0..width {
+        for y in 0..width {
+            if x == 0 && y == 0 || x == 1 && y == 0 || x == 0 && y == 1 {
+                continue;
+            }
 
-        if i == 4 {
-            image[2][0] = image[2][0].rotate_right();
-        } else {
-            image[2][0] = image[2][0].flip_horizontally();
-        }
-    }
+            for i in 0..8 {
+                if (x == 0 || image[x][y].aligned_side(&image[x - 1][y]) == Some(Side::Left))
+                    && (y == 0 || image[x][y].aligned_side(&image[x][y - 1]) == Some(Side::Top))
+                {
+                    break;
+                }
 
-    for i in 0..8 {
-        if image[0][2].aligned_side(&image[1][2]).is_some()
-            && image[0][2].aligned_side(&image[0][1]).is_some()
-        {
-            break;
-        }
-
-        if i == 4 {
-            image[0][2] = image[0][2].rotate_right();
-        } else {
-            image[0][2] = image[0][2].flip_horizontally();
+                if i == 3 {
+                    image[x][y] = image[x][y].flip_horizontally();
+                } else {
+                    image[x][y] = image[x][y].rotate_right();
+                }
+            }
         }
     }
 
-    for i in 0..8 {
-        if image[1][1].aligned_side(&image[0][1]).is_some()
-            && image[1][1].aligned_side(&image[1][0]).is_some()
-            && image[1][1].aligned_side(&image[1][2]).is_some()
-            && image[1][1].aligned_side(&image[2][1]).is_some()
-        {
+    let mut image = Image::from_tiles(&image);
+    let mut found = false;
+
+    for i in 0..12 {
+        for x in 0..(image.width - SEAMONSTER_WIDTH) {
+            for y in 0..(image.width - SEAMONSTER_HEIGHT) {
+                let seamonster_pixels: Vec<_> = SEAMONSTER_PIXELS
+                    .iter()
+                    .map(|&(dx, dy)| (x + dx, y + dy))
+                    .collect();
+                if seamonster_pixels.iter().all(|&(x, y)| image.pixels[x][y]) {
+                    found = true;
+                    for &(x, y) in &seamonster_pixels {
+                        image.pixels[x][y] = false;
+                    }
+                }
+            }
+        }
+
+        if found {
             break;
         }
 
-        if i == 4 {
-            image[1][1] = image[1][1].rotate_right();
+        if i == 3 {
+            image = image.flip_horizontally();
         } else {
-            image[1][1] = image[1][1].flip_horizontally();
+            image = image.rotate_right();
         }
     }
 
-    dbg!(&image);
+    let part_2 = image.pixels.iter().fold(0, |acc, col| {
+        acc + col
+            .iter()
+            .fold(0, |acc, &cell| if cell { acc + 1 } else { acc })
+    });
+
+    println!("Part 2: {}", part_2);
 }
 
 const TILE_WIDTH: usize = 10;
+
+const SEAMONSTER_WIDTH: usize = 20;
+const SEAMONSTER_HEIGHT: usize = 3;
+const SEAMONSTER_PIXELS: [(usize, usize); 15] = [
+    (0, 1),
+    (1, 2),
+    (4, 2),
+    (5, 1),
+    (6, 1),
+    (7, 2),
+    (10, 2),
+    (11, 1),
+    (12, 1),
+    (13, 2),
+    (16, 2),
+    (17, 1),
+    (18, 0),
+    (18, 1),
+    (19, 1),
+];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Tile {
@@ -393,12 +437,83 @@ impl Tile {
 
 type Edge = [bool; TILE_WIDTH];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Side {
     Top,
     Bottom,
     Left,
     Right,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct Image {
+    width: usize,
+    pixels: Vec<Vec<bool>>,
+}
+
+impl fmt::Display for Image {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for y in 0..self.width {
+            writeln!(f)?;
+            for x in 0..self.width {
+                write!(f, "{}", if self.pixels[x][y] { '#' } else { '.' })?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Image {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl Image {
+    fn from_tiles(tiles: &Vec<Vec<Tile>>) -> Image {
+        let width = (TILE_WIDTH - 2) * tiles.len();
+        let mut pixels = vec![vec![false; width]; width];
+
+        for tile_x in 0..tiles.len() {
+            for tile_y in 0..tiles[tile_x].len() {
+                let tile = &tiles[tile_x][tile_y];
+
+                for x in 1..(TILE_WIDTH - 1) {
+                    for y in 1..(TILE_WIDTH - 1) {
+                        pixels[tile_x * (TILE_WIDTH - 2) + (x - 1)]
+                            [tile_y * (TILE_WIDTH - 2) + (y - 1)] = tile.pixels[x][y];
+                    }
+                }
+            }
+        }
+
+        Image { width, pixels }
+    }
+
+    fn rotate_right(&self) -> Image {
+        let mut new = self.clone();
+
+        for x in 0..self.width {
+            for y in 0..self.width {
+                new.pixels[self.width - 1 - y][x] = self.pixels[x][y];
+            }
+        }
+
+        new
+    }
+
+    fn flip_horizontally(&self) -> Image {
+        let mut new = self.clone();
+
+        for x in 0..self.width {
+            for y in 0..self.width {
+                new.pixels[self.width - 1 - x][y] = self.pixels[x][y];
+            }
+        }
+
+        new
+    }
 }
 
 #[cfg(test)]
